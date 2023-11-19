@@ -1,15 +1,17 @@
-from scraper.scraper import initialize_webdriver
-
-import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, StaleElementReferenceException
+import undetected_chromedriver as uc
+from utils.logger import log_error
+from utils.utilities import retryable_get
 
 
 def scrape_scholarship_region(sr_page_url):
-    driver_instance = initialize_webdriver()
-    wait = WebDriverWait(driver_instance, 1000)  # Adjusted wait time to a reasonable duration
+    options = uc.ChromeOptions()
+    options.headless = False
+    driver_instance = uc.Chrome(use_subprocess=True, options=options)
+    wait = WebDriverWait(driver_instance, 10)  # Adjusted wait time to a more reasonable duration
 
     driver_instance.get(sr_page_url)
 
@@ -25,26 +27,25 @@ def scrape_scholarship_region(sr_page_url):
             scholarships.append((title, page_url))
 
         for title, page_url in scholarships:
-            driver_instance.get(page_url)
-
-            # Check for Google ad overlay
-            if '#google_vignette' in driver_instance.current_url:
-                print(f"Detected ad overlay on {title}, retrying...")
-                driver_instance.get(page_url)
-
             try:
-                deadline_text = wait.until(
-                    EC.presence_of_element_located((By.XPATH, "//h4[contains(text(), 'Deadline')]"))).text
-                original_scholarship = wait.until(EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, '.elementor-button.elementor-button-link.elementor-size-md')))
-                original_scholarship_url = original_scholarship.get_attribute('href')
+                retryable_get(driver_instance, page_url, title)
 
-                results.append((title, original_scholarship_url, deadline_text))
-            except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
-                print(f"Couldn't find the required elements for {title}. Error: {str(e)}")
+                try:
+                    deadline_text = wait.until(
+                        EC.presence_of_element_located((By.XPATH, "//h4[contains(text(), 'Deadline')]"))).text
+                    original_scholarship = wait.until(EC.element_to_be_clickable(
+                        (By.CSS_SELECTOR, '.elementor-button.elementor-button-link.elementor-size-md')))
+                    original_scholarship_url = original_scholarship.get_attribute('href')
+
+                    results.append((title, original_scholarship_url, deadline_text))
+                except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
+                    log_error(e, f"Couldn't find the required elements for {title}")
+
+            except Exception as e:
+                log_error(e, f"Retry failed for {title}")
 
     except Exception as e:
-        print(f"Error occurred while fetching scholarship listings: {str(e)}")
+        log_error(e, "Error occurred while fetching scholarship listings")
     finally:
         driver_instance.quit()
 
