@@ -2,7 +2,6 @@ import undetected_chromedriver as uc
 import time
 from selenium.webdriver.common.by import By
 
-
 def initialize_webdriver():
     """
     Initializes and returns a Chrome WebDriver for modularity.
